@@ -14,6 +14,7 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
 
+BM25_K1 = 1.5
 # ===============================
 # TEXT NORMALIZATION PIPELINE
 # ===============================
@@ -168,12 +169,15 @@ class InvertedIndex:
         return bm25_idf
 
 
+    def get_bm25_tf(self, doc_id: int, term: str, k1: float = BM25_K1) -> float:
+        tf = self.get_tf(doc_id, term)
+        bm25_saturated_tf = (tf*(k1 + 1)) / (tf + k1)
+        return bm25_saturated_tf
 
 
 # ===============================
-# BM25 FUNCTION
+# BM25 IDF FUNCTION
 # ===============================
-
 def bm25_idf_command(term: str) -> float:
     index = InvertedIndex()
     try:
@@ -185,6 +189,24 @@ def bm25_idf_command(term: str) -> float:
     bm25_idf_score = index.get_bm25_idf(term)
     
     return bm25_idf_score
+
+
+
+# ===============================
+# BM25 TF FUNCTION
+# ===============================
+def bm25_tf_command(doc_id: int, term: str, k1: float = BM25_K1) -> float:
+    index = InvertedIndex()
+    try:
+        index.load()
+    except FileNotFoundError as e:
+        print(e)
+        return
+    
+    bm25_tf_score = index.get_bm25_tf(doc_id, term, k1)
+    
+    return bm25_tf_score
+
 
 
 
@@ -265,6 +287,12 @@ def main() -> None:
     bm25_idf_parser = subparsers.add_parser('bm25idf', help="Get BM25 IDF score for a given term")
     bm25_idf_parser.add_argument("term", type=str, help="Term to get BM25 IDF score for")
 
+    bm25_tf_parser = subparsers.add_parser("bm25tf", help="Get BM25 TF score for a given document ID and term")
+    bm25_tf_parser.add_argument("doc_id", type=int, help="Document ID")
+    bm25_tf_parser.add_argument("term", type=str, help="Term to get BM25 TF score for")
+    bm25_tf_parser.add_argument("k1", type=float, nargs='?', default=BM25_K1, help="Tunable BM25 K1 parameter")
+
+
     args = parser.parse_args()
 
     match args.command:
@@ -338,6 +366,12 @@ def main() -> None:
             bm25idf = bm25_idf_command(args.term)
             if bm25idf is not None:
                 print(f"BM25 IDF score of '{args.term}': {bm25idf:.2f}")
+
+        case "bm25tf":
+            bm25tf = bm25_tf_command(args.doc_id, args.term, args.k1)
+            if bm25tf is not None:
+                print(f"BM25 TF score of '{args.term}' in document '{args.doc_id}': {bm25tf:.2f}")
+
 
         case _:
             parser.print_help()
