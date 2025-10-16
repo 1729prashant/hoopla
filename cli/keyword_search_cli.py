@@ -15,6 +15,8 @@ from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
 
 BM25_K1 = 1.5
+BM25_B = 0.75
+
 # ===============================
 # TEXT NORMALIZATION PIPELINE
 # ===============================
@@ -86,17 +88,25 @@ class InvertedIndex:
         # doc_id -> movie dict
         self.docmap: dict[int, dict] = {}
         self.term_frequencies: dict[int, Counter[str]] = {}
+        self.doc_lengths: dict = {}
 
     def __add_document(self, doc_id, text):
         """Tokenize text and add its tokens to the inverted index."""
         tokens = normalize_text(text)
         self.term_frequencies[doc_id] = Counter(tokens)
+        self.doc_lengths[doc_id] = len(tokens)
 
         for token in tokens:
             if token not in self.index:
                 self.index[token] = set()
             self.index[token].add(doc_id)
 
+    def __get_avg_doc_length(self) -> float:
+        """Return the average document length across all documents."""
+        if not self.doc_lengths:
+            return 0.0
+        return sum(self.doc_lengths.values()) / len(self.doc_lengths)
+    
     def get_documents(self, term):
         """Return sorted list of doc_ids for the given token."""
         term = term.lower()
@@ -118,11 +128,13 @@ class InvertedIndex:
             pickle.dump(self.docmap, f_docmap)
         with open("cache/term_frequencies.pkl", "wb") as f_term_frequencies:
             pickle.dump(self.term_frequencies, f_term_frequencies)
+        with open("cache/doc_lengths.pkl", "wb") as f_doc_lengths:
+            pickle.dump(self.doc_lengths, f_doc_lengths)
 
     def load(self):
         """load the index and docmap from disk using pickle."""
-        if not os.path.exists("cache/index.pkl") or not os.path.exists("cache/docmap.pkl") or not os.path.exists("cache/term_frequencies.pkl"):
-            raise FileNotFoundError("Cached index or docmap or term_frequencies not found. Please run `build` first.")
+        if not os.path.exists("cache/index.pkl") or not os.path.exists("cache/docmap.pkl") or not os.path.exists("cache/term_frequencies.pkl") or not os.path.exists("cache/doc_lengths.pkl"):
+            raise FileNotFoundError("Cached index or docmap or term_frequencies or doc_lengths not found. Please run `build` first.")
 
         with open("cache/index.pkl", "rb") as f_index:
             self.index = pickle.load(f_index)
@@ -130,6 +142,8 @@ class InvertedIndex:
             self.docmap = pickle.load(f_docmap)
         with open("cache/term_frequencies.pkl", "rb") as f_term_frequencies:
             self.term_frequencies = pickle.load(f_term_frequencies)
+        with open("cache/doc_lengths.pkl", "rb") as f_doc_lengths:
+            self.doc_lengths = pickle.load(f_doc_lengths)            
 
     def get_tf(self, doc_id: str, term: str) -> int:
         tokens = normalize_text(term)
@@ -169,10 +183,19 @@ class InvertedIndex:
         return bm25_idf
 
 
-    def get_bm25_tf(self, doc_id: int, term: str, k1: float = BM25_K1) -> float:
+    def get_bm25_tf(self, doc_id: int, term: str, k1: float = BM25_K1, b: float = BM25_B) -> float:
         tf = self.get_tf(doc_id, term)
-        bm25_saturated_tf = (tf*(k1 + 1)) / (tf + k1)
-        return bm25_saturated_tf
+        if doc_id not in self.doc_lengths:
+            return 0.0
+        
+        doc_len = self.doc_lengths[doc_id]
+        avg_doc_len = self.__get_avg_doc_length()
+
+            # Length normalization factor
+        norm = (1 - b) + b * (doc_len / avg_doc_len) if avg_doc_len > 0 else 1.0
+
+        bm25_tf = (tf * (k1 + 1)) / (tf + k1 * norm) if tf > 0 else 0.0
+        return bm25_tf
 
 
 # ===============================
@@ -195,7 +218,7 @@ def bm25_idf_command(term: str) -> float:
 # ===============================
 # BM25 TF FUNCTION
 # ===============================
-def bm25_tf_command(doc_id: int, term: str, k1: float = BM25_K1) -> float:
+def bm25_tf_command(doc_id: int, term: str, k1: float = BM25_K1, b: float = BM25_B) -> float:
     index = InvertedIndex()
     try:
         index.load()
@@ -203,7 +226,7 @@ def bm25_tf_command(doc_id: int, term: str, k1: float = BM25_K1) -> float:
         print(e)
         return
     
-    bm25_tf_score = index.get_bm25_tf(doc_id, term, k1)
+    bm25_tf_score = index.get_bm25_tf(doc_id, term, k1, b)
     
     return bm25_tf_score
 
@@ -237,8 +260,6 @@ def search_func(index: InvertedIndex, search_term: str = "") -> None:
 
 
 
-
-
 # ===============================
 # BUILD FUNCTION
 # ===============================
@@ -258,6 +279,7 @@ def build_index() -> None:
     index = InvertedIndex()
     index.build(movies_data)
     index.save()
+
 
 
 # ===============================
@@ -291,7 +313,7 @@ def main() -> None:
     bm25_tf_parser.add_argument("doc_id", type=int, help="Document ID")
     bm25_tf_parser.add_argument("term", type=str, help="Term to get BM25 TF score for")
     bm25_tf_parser.add_argument("k1", type=float, nargs='?', default=BM25_K1, help="Tunable BM25 K1 parameter")
-
+    bm25_tf_parser.add_argument("b", type=float, nargs='?', default=BM25_B, help="Tunable BM25 B parameter")
 
     args = parser.parse_args()
 
@@ -367,8 +389,9 @@ def main() -> None:
             if bm25idf is not None:
                 print(f"BM25 IDF score of '{args.term}': {bm25idf:.2f}")
 
+
         case "bm25tf":
-            bm25tf = bm25_tf_command(args.doc_id, args.term, args.k1)
+            bm25tf = bm25_tf_command(args.doc_id, args.term, args.k1, args.b)
             if bm25tf is not None:
                 print(f"BM25 TF score of '{args.term}' in document '{args.doc_id}': {bm25tf:.2f}")
 
