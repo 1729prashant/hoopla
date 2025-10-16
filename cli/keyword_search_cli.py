@@ -152,6 +152,42 @@ class InvertedIndex:
 #        Then look up how many times this token appears in that Counter.
 #        If the token isn’t there, return 0.
 
+
+    def get_bm25_idf(self, term: str) -> float:
+        """Compute BM25 IDF for a single normalized term."""
+        N = len(self.docmap)
+        
+        normalized_term = normalize_text(term)
+        if len(normalized_term) != 1:
+            print("Error: BM25 IDF can only be computed for a single token.")
+            return
+        term = normalized_term[0]
+        df = len(self.index.get(term, set()))
+
+        bm25_idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
+        return bm25_idf
+
+
+
+
+# ===============================
+# BM25 FUNCTION
+# ===============================
+
+def bm25_idf_command(term: str) -> float:
+    index = InvertedIndex()
+    try:
+        index.load()
+    except FileNotFoundError as e:
+        print(e)
+        return
+    
+    bm25_idf_score = index.get_bm25_idf(term)
+    
+    return bm25_idf_score
+
+
+
 # ===============================
 # SEARCH FUNCTION
 # ===============================
@@ -226,6 +262,8 @@ def main() -> None:
     tfidf_parser.add_argument("doc_id", type=int, help="Document ID")
     tfidf_parser.add_argument("term", type=str, help="Term to look up")
 
+    bm25_idf_parser = subparsers.add_parser('bm25idf', help="Get BM25 IDF score for a given term")
+    bm25_idf_parser.add_argument("term", type=str, help="Term to get BM25 IDF score for")
 
     args = parser.parse_args()
 
@@ -294,6 +332,12 @@ def main() -> None:
             idf = math.log((doc_count + 1) / (term_doc_count + 1))
             tfidf = tf*idf
             print(f"TF-IDF score of '{args.term}' in document '{args.doc_id}': {tfidf:.2f}")
+
+
+        case "bm25idf":
+            bm25idf = bm25_idf_command(args.term)
+            if bm25idf is not None:
+                print(f"BM25 IDF score of '{args.term}': {bm25idf:.2f}")
 
         case _:
             parser.print_help()
