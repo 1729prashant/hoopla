@@ -8,6 +8,8 @@ import string
 import pickle
 import os
 import pickle
+import math
+from collections import Counter
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
@@ -82,12 +84,13 @@ class InvertedIndex:
         self.index: dict[str, set[int]] = {}
         # doc_id -> movie dict
         self.docmap: dict[int, dict] = {}
-
+        self.term_frequencies: dict[int, Counter[str]] = {}
 
     def __add_document(self, doc_id, text):
         """Tokenize text and add its tokens to the inverted index."""
-        # tokens = text.split()
         tokens = normalize_text(text)
+        self.term_frequencies[doc_id] = Counter(tokens)
+
         for token in tokens:
             if token not in self.index:
                 self.index[token] = set()
@@ -112,18 +115,42 @@ class InvertedIndex:
             pickle.dump(self.index, f_index)
         with open("cache/docmap.pkl", "wb") as f_docmap:
             pickle.dump(self.docmap, f_docmap)
+        with open("cache/term_frequencies.pkl", "wb") as f_term_frequencies:
+            pickle.dump(self.term_frequencies, f_term_frequencies)
 
     def load(self):
         """load the index and docmap from disk using pickle."""
-        if not os.path.exists("cache/index.pkl") or not os.path.exists("cache/docmap.pkl"):
-            raise FileNotFoundError("Cached index or docmap not found. Please run `build` first.")
+        if not os.path.exists("cache/index.pkl") or not os.path.exists("cache/docmap.pkl") or not os.path.exists("cache/term_frequencies.pkl"):
+            raise FileNotFoundError("Cached index or docmap or term_frequencies not found. Please run `build` first.")
 
         with open("cache/index.pkl", "rb") as f_index:
             self.index = pickle.load(f_index)
         with open("cache/docmap.pkl", "rb") as f_docmap:
             self.docmap = pickle.load(f_docmap)
+        with open("cache/term_frequencies.pkl", "rb") as f_term_frequencies:
+            self.term_frequencies = pickle.load(f_term_frequencies)
 
+    def get_tf(self, doc_id: str, term: str) -> int:
+        tokens = normalize_text(term)
+        if len(tokens) != 1:
+            raise ValueError("Expected exactly one token after normalization.")
+        token = tokens[0]
 
+        if doc_id not in self.term_frequencies:
+            return 0
+
+        return self.term_frequencies[doc_id].get(token, 0)
+        # below is what is return statement is doing
+#        if doc_id in self.term_frequencies:
+#            if token in self.term_frequencies[doc_id]:
+#                return self.term_frequencies[doc_id][token]
+#            else:
+#                return 0
+#        else:
+#            return 0
+#        Look up the Counter for this document.
+#        Then look up how many times this token appears in that Counter.
+#        If the token isn’t there, return 0.
 
 # ===============================
 # SEARCH FUNCTION
@@ -184,7 +211,21 @@ def main() -> None:
 
     search_parser = subparsers.add_parser("search", help="Search movies using token matching")
     search_parser.add_argument("query", type=str, help="Search query")
+    
     subparsers.add_parser("build", help="Build and cache inverted index")
+
+    tf_parser = subparsers.add_parser("tf", help="Get term frequency for a term in a document")
+    tf_parser.add_argument("doc_id", type=int, help="Document ID")
+    tf_parser.add_argument("term", type=str, help="Term to look up")
+
+    idf_parser = subparsers.add_parser("idf", help="Get inverse document frequency for a term in a document")
+    idf_parser.add_argument("term", type=str, help="Term to look up")
+
+
+    tfidf_parser = subparsers.add_parser("tfidf", help="Get TF-IDF for a term in a document")
+    tfidf_parser.add_argument("doc_id", type=int, help="Document ID")
+    tfidf_parser.add_argument("term", type=str, help="Term to look up")
+
 
     args = parser.parse_args()
 
@@ -204,6 +245,56 @@ def main() -> None:
             print("Building inverted index...")
             build_index()
         
+        case "tf":
+            index = InvertedIndex()
+            try:
+                index.load()
+            except FileNotFoundError as e:
+                print(e)
+                return
+            tf_value = index.get_tf(args.doc_id, args.term)
+            print(tf_value)
+
+        case "idf":
+            index = InvertedIndex()
+            try:
+                index.load()
+            except FileNotFoundError as e:
+                print(e)
+                return
+            doc_count = len(index.docmap)
+
+            normalized_term = normalize_text(args.term)
+            if len(normalized_term) != 1:
+                print("Error: IDF can only be computed for a single token.")
+                return
+            term = normalized_term[0]
+            term_doc_count = len(index.index.get(term, set()))  # count how many documents contain the term (the size of the set for that token)     
+            
+            idf = math.log((doc_count + 1) / (term_doc_count + 1))
+            print(f"Inverse document frequency of '{args.term}': {idf:.2f}")
+
+        case "tfidf":
+            index = InvertedIndex()
+            try:
+                index.load()
+            except FileNotFoundError as e:
+                print(e)
+                return
+            doc_count = len(index.docmap)
+
+            normalized_term = normalize_text(args.term)
+            if len(normalized_term) != 1:
+                print("Error: IDF can only be computed for a single token.")
+                return
+            term = normalized_term[0]
+            term_doc_count = len(index.index.get(term, set()))  # count how many documents contain the term (the size of the set for that token)     
+            
+            tf = index.get_tf(args.doc_id, args.term)
+            idf = math.log((doc_count + 1) / (term_doc_count + 1))
+            tfidf = tf*idf
+            print(f"TF-IDF score of '{args.term}' in document '{args.doc_id}': {tfidf:.2f}")
+
         case _:
             parser.print_help()
 
