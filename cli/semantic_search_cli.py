@@ -13,6 +13,8 @@ def main():
     embed_parser = subparsers.add_parser("embed_text", help="use to pass text with embed_text <your text here>")
     embed_parser.add_argument("text", type=str, help="text")
 
+    verify_embeddings = subparsers.add_parser("verify_embeddings", help="verifies embeddings")
+
     args = parser.parse_args()
     match args.command:
         
@@ -21,6 +23,9 @@ def main():
         
         case "embed_text":
             ll.embed(args.text)
+
+        case "verify_embeddings":
+            ll.verify_embeddings()
 
         case _:
             parser.print_help()
