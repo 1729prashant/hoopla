@@ -8,5 +8,6 @@ wheels/
 .env
 data/
 .DS_Store
+cache/
 # Virtual environments
 .venv

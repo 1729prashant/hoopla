@@ -10,10 +10,14 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     verify_parser = subparsers.add_parser("verify", help="verifies that the model loads correctly")
+    
     embed_parser = subparsers.add_parser("embed_text", help="use to pass text with embed_text <your text here>")
     embed_parser.add_argument("text", type=str, help="text")
 
     verify_embeddings = subparsers.add_parser("verify_embeddings", help="verifies embeddings")
+
+    query_embeddings = subparsers.add_parser("embedquery", help="query embedding, usage embedquery <your query here>")
+    query_embeddings.add_argument("query", type=str, help="query text")
 
     args = parser.parse_args()
     match args.command:
@@ -26,6 +30,9 @@ def main():
 
         case "verify_embeddings":
             ll.verify_embeddings()
+
+        case "embedquery":
+            ll.embed_query_text(args.query)
 
         case _:
             parser.print_help()
