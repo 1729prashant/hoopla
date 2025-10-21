@@ -53,7 +53,34 @@ class SemanticSearch:
             return self.build_embeddings(documents)
         return self.embeddings
 
+    def search(self, query, limit=5):
+        if self.embeddings is None:
+            raise ValueError("No embeddings loaded. Call `load_or_create_embeddings` first.")
 
+        # 1. Generate embedding for the query
+        query_embedding = self.generate_embedding(query)
+
+        # 2. Calculate cosine similarity between query and each document embedding
+        # The search() method assumes a one-to-one, order-preserving correspondence between:
+        # self.embeddings[i] ↔ self.documents[i].
+        similarity_scores = []
+        for i, doc_embedding in enumerate(self.embeddings):
+            score = cosine_similarity(query_embedding, doc_embedding)
+            similarity_scores.append((score, self.documents[i]))
+
+        # 3. Sort by similarity in descending order
+        similarity_scores.sort(key=lambda x: x[0], reverse=True)
+
+        # 4. Prepare top results up to limit
+        results = []
+        for score, doc in similarity_scores[:limit]:
+            results.append({
+                "score": score,
+                "title": doc["title"],
+                "description": doc["description"]
+            })
+
+        return results
 
 
 def verify_model() -> None:
@@ -101,6 +128,7 @@ def verify_embeddings() -> None:
 
 
 
+
 def embed_query_text(query: str):
     
     minilm_semantic_load = SemanticSearch()
@@ -110,3 +138,13 @@ def embed_query_text(query: str):
     print(f"Shape: {query_embedding.shape}")
 
 
+def cosine_similarity(vec1, vec2):
+
+    dot_product = np.dot(vec1, vec2)
+    norm1 = np.linalg.norm(vec1)
+    norm2 = np.linalg.norm(vec2)
+
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+
+    return dot_product / (norm1 * norm2)

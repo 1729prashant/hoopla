@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-# from lib.semantic_search import verify_model
-# from lib.semantic_search import embed
+import json
 import lib.semantic_search as ll
 
 def main():
@@ -19,6 +18,10 @@ def main():
     query_embeddings = subparsers.add_parser("embedquery", help="query embedding, usage embedquery <your query here>")
     query_embeddings.add_argument("query", type=str, help="query text")
 
+    search_embeddings = subparsers.add_parser("search", help="term you want to search for")
+    search_embeddings.add_argument("query", type=str, help="query text")
+    search_embeddings.add_argument("--limit", type=int, default=5, help="Number of results to return")
+
     args = parser.parse_args()
     match args.command:
         
@@ -33,6 +36,21 @@ def main():
 
         case "embedquery":
             ll.embed_query_text(args.query)
+
+        case "search":
+            llminilm_semantic_load = ll.SemanticSearch()
+
+            # Load movie data, and create embeddings
+            with open('data/movies.json', 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                documents = data["movies"]
+            llminilm_semantic_load.load_or_create_embeddings(documents)
+
+            search_results = llminilm_semantic_load.search(args.query,args.limit)
+            i=1
+            for i, result in enumerate(search_results, start=1):
+                print(f"{i}. {result['title']} (score: {result['score']:.4f})")
+                print(f"   {result['description']}\n")
 
         case _:
             parser.print_help()
