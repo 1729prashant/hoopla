@@ -5,6 +5,10 @@ import json
 import re
 import lib.semantic_search as ll
 
+def load_movies():
+    with open('data/movies.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return data["movies"]
 
 def main():
     parser = argparse.ArgumentParser(description="Semantic Search CLI")
@@ -44,6 +48,13 @@ def main():
 
     embed_chunks = subparsers.add_parser("embed_chunks", help="generate embedded chunks")
 
+    search_chunked = subparsers.add_parser("search_chunked", help="generate embedded chunks")
+    search_chunked.add_argument("query", type=str, help="query text")
+    search_chunked.add_argument("--limit", type=int, default=5, help="Number of results to return")
+
+
+
+
     args = parser.parse_args()
     match args.command:
         
@@ -63,9 +74,7 @@ def main():
             llminilm_semantic_load = ll.SemanticSearch()
 
             # Load movie data, and create embeddings
-            with open('data/movies.json', 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                documents = data["movies"]
+            documents = load_movies()
             llminilm_semantic_load.load_or_create_embeddings(documents)
 
             search_results = llminilm_semantic_load.search(args.query,args.limit)
@@ -105,11 +114,20 @@ def main():
             llminilm_semantic_load = ll.ChunkedSemanticSearch()
 
             # Load movie data, and create embeddings
-            with open('data/movies.json', 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                documents = data["movies"]
+            documents = load_movies()
             chunk_embeddings = llminilm_semantic_load.load_or_create_chunk_embeddings(documents)
             print(f"Generated {len(chunk_embeddings)} chunked embeddings")
+
+
+        case "search_chunked":
+            documents = load_movies()
+            llminilm_semantic_load = ll.ChunkedSemanticSearch()
+            chunk_embeddings = llminilm_semantic_load.load_or_create_chunk_embeddings(documents)
+            results = llminilm_semantic_load.search_chunks(args.query, args.limit)
+            for i, chunk_line in enumerate(results, start=0):
+                print(f"\n{i+1}. {results[i]['title']} (score: {results[i]['score']:.4f})")
+                print(f"   {results[i]['description']}...")
+
 
         case _:
             parser.print_help()

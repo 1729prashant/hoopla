@@ -179,8 +179,6 @@ class ChunkedSemanticSearch(SemanticSearch):
                 })
 
         self.chunk_embeddings = self.model.encode(chunks_list, show_progress_bar=True)
-        print(f"DEBUG: in build_chunk_embeddings, self.chunk_embeddings len is {len(self.chunk_embeddings)}")
-        print(f"DEBUG: in build_chunk_embeddings, chunks_list len is {len(chunks_list)}")
         np.save("cache/chunk_embeddings.npy", self.chunk_embeddings)
 
         with open("cache/chunk_metadata.json", "w") as f:
@@ -206,6 +204,74 @@ class ChunkedSemanticSearch(SemanticSearch):
         return self.build_chunk_embeddings(documents)
 
 
+    def search_chunks(self, query: str, limit: int = 10):
+            # 1. Generate an embedding of the query
+            query_embedding = self.generate_embedding(query)
+            
+            # 2. Populate an empty list to score "chunk score" dictionaries
+            chunk_score_list = []
+            
+            # For each chunk embedding: Calculate the cosine similarity and append to list
+            if self.chunk_embeddings is None or self.chunk_metadata is None:
+                raise ValueError("Chunk embeddings and/or metadata not loaded. Call `load_or_create_chunk_embeddings` first.")
+
+            for i, chunk_embedding in enumerate(self.chunk_embeddings):
+                score = cosine_similarity(query_embedding, chunk_embedding)
+                metadata = self.chunk_metadata[i]
+                
+                # Append a dictionary to the chunk score list
+                chunk_score_list.append({
+                    "chunk_idx": metadata["chunk_idx"],
+                    # Note: movie_idx in metadata is the document 'id', which is an index in self.documents
+                    "movie_idx": metadata["movie_idx"], 
+                    "score": score
+                })
+
+            # 3. Create an empty dictionary that maps movie indexes to their scores (movie_idx: max_score)
+            movie_scores = {}
+
+            # 4. Update the movie score dictionary with the highest chunk score for that movie
+            for chunk_score in chunk_score_list:
+                movie_idx = chunk_score["movie_idx"]
+                score = chunk_score["score"]
+                
+                # If the movie_idx is not in the movie score dictionary yet, 
+                # or the new score is higher than the existing one, update the movie score.
+                if movie_idx not in movie_scores or score > movie_scores[movie_idx]["score"]:
+                    # Store the whole chunk_score dict for easy sorting/access
+                    movie_scores[movie_idx] = chunk_score
+
+            # 5. Sort the movie scores by score in descending order.
+            # Convert dictionary values to a list of the chunk_score dictionaries
+            sorted_movie_scores = sorted(
+                movie_scores.values(), 
+                key=lambda x: x["score"], 
+                reverse=True
+            )
+
+            # 6. Filter down to the top limit movies.
+            top_movie_results = sorted_movie_scores[:limit]
+            
+            # 7. Format the results using format_search_result. Limit the movie description to the first 100 characters.
+            final_results = []
+            for result_data in top_movie_results:
+                movie_idx = result_data["movie_idx"]
+                # Lookup the full document from self.documents using the movie_idx (which is the document 'id')
+                doc = self.document_map[movie_idx] 
+                
+                formatted_result = format_search_result(
+                    score=result_data["score"],
+                    doc=doc,
+                    chunk_idx=result_data["chunk_idx"],
+                    movie_idx=movie_idx,
+                    description_limit=100
+                )
+                final_results.append(formatted_result)
+
+            # 8. Return the final list of results.
+            return final_results
+
+
 def semantic_chunking(query: str, max_chunk_size: int=4, overlap: int=1):
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", query) if s.strip()]
 
@@ -223,3 +289,25 @@ def semantic_chunking(query: str, max_chunk_size: int=4, overlap: int=1):
         i += step
 
     return chunked_sentences
+
+
+def format_search_result(score, doc, chunk_idx=None, movie_idx=None, description_limit=None):
+    """
+    Formats the search result dictionary.
+    """
+    description = doc.get("description", "")
+    if description_limit is not None and len(description) > description_limit:
+        description = description[:description_limit] + "..."
+
+    result = {
+        "score": score,
+        "title": doc.get("title", "N/A"),
+        "description": description
+    }
+    # Include chunk-specific metadata only if provided (for debugging/context)
+    if chunk_idx is not None:
+        result["chunk_idx"] = chunk_idx
+    if movie_idx is not None:
+        result["movie_idx"] = movie_idx
+
+    return result
