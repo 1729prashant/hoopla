@@ -273,20 +273,67 @@ class ChunkedSemanticSearch(SemanticSearch):
 
 
 def semantic_chunking(query: str, max_chunk_size: int=4, overlap: int=1):
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", query) if s.strip()]
+    # Strip leading and trailing whitespace from the input text
+    text = query.strip() 
+
+    # If there's nothing left after stripping, return an empty list.
+    if not text:
+        return []
+
+    # Split sentences using the provided regex
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+
+    # Handle single sentence without end punctuation & ensure stripping
+    if len(sentences) == 1 and not re.search(r'[.!?]$', sentences[0]):
+        # If there's only one sentence and it doesn't end with a punctuation mark, 
+        # the original splitting might have failed to capture the full intent.
+        # Since the original logic already stripped sentences, we just ensure 
+        # the single sentence is used. If the text itself was the single sentence, 
+        # it was already stripped via .strip() on 'text'.
+        pass 
+    
+    # Re-strip all sentences for robustness (though the list comprehension does this, 
+    # it's safer to ensure we filter out empty strings in the next step).
+    sentences = [s.strip() for s in sentences]
+
+    # Filter out any resulting empty strings
+    sentences = [s for s in sentences if s]
+    
+    if not sentences:
+        # This handles cases where splitting results in an empty list even if text was non-empty 
+        # (e.g., text with only spaces, tabs, etc., which is largely covered by the initial check, 
+        # but is good practice).
+        return []
 
     chunked_sentences = []
-
+    
     step = max_chunk_size - overlap
     if step <= 0:
         print("Error: overlap must be smaller than chunk size.")
-        return
+        return [] # Changed return to [] instead of None for consistency
+
     i = 0
-    while i < len(sentences) - overlap:
+    # The original loop condition `i < len(sentences) - overlap` is correct for overlapping chunks
+    while i < len(sentences):
         group = sentences[i:i + max_chunk_size]
         chunk = " ".join(group)
-        chunked_sentences.append(chunk)
-        i += step
+        
+        # Strip leading and trailing whitespace from each sentence before appending it to the chunk list.
+        # The sentences were already stripped, but the final chunk needs to be stripped, 
+        # and then checked for content.
+        stripped_chunk = chunk.strip() 
+
+        # Only use chunks that still have content after the stripping.
+        if stripped_chunk:
+            chunked_sentences.append(stripped_chunk)
+        
+        # Move the index forward by the step size (max_chunk_size - overlap)
+        if i + max_chunk_size >= len(sentences):
+            # If the current group covered the remaining sentences, stop.
+            break
+        else:
+            # Move to the start of the next chunk
+            i += step
 
     return chunked_sentences
 
