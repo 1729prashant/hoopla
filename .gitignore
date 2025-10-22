@@ -9,5 +9,6 @@ wheels/
 data/
 .DS_Store
 cache/
+uv.lock
 # Virtual environments
 .venv

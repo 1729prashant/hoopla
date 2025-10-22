@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import lib.semantic_search as ll
 
 
@@ -9,15 +10,20 @@ def main():
     parser = argparse.ArgumentParser(description="Semantic Search CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+
     verify_parser = subparsers.add_parser("verify", help="verifies that the model loads correctly")
-    
+
+
     embed_parser = subparsers.add_parser("embed_text", help="use to pass text with embed_text <your text here>")
     embed_parser.add_argument("text", type=str, help="text")
 
+
     verify_embeddings = subparsers.add_parser("verify_embeddings", help="verifies embeddings")
+
 
     query_embeddings = subparsers.add_parser("embedquery", help="query embedding, usage embedquery <your query here>")
     query_embeddings.add_argument("query", type=str, help="query text")
+
 
     search_embeddings = subparsers.add_parser("search", help="term you want to search for")
     search_embeddings.add_argument("query", type=str, help="query text")
@@ -28,6 +34,15 @@ def main():
     chunking.add_argument("query", type=str, help="text to chunk")
     chunking.add_argument("--chunk-size", type=int, default=200, help="chunking size")
     chunking.add_argument("--overlap", type=int, default=0, help="overlap amount")
+
+
+    semantic_chunk = subparsers.add_parser("semantic_chunk", help="chunk texts using semantic chunk")
+    semantic_chunk.add_argument("query", type=str, help="text to chunk")
+    semantic_chunk.add_argument("--max-chunk-size", type=int, default=4, help="chunking size")
+    semantic_chunk.add_argument("--overlap", type=int, default=0, help="overlap amount") 
+
+
+    embed_chunks = subparsers.add_parser("embed_chunks", help="generate embedded chunks")
 
     args = parser.parse_args()
     match args.command:
@@ -78,6 +93,23 @@ def main():
             print(f"Chunking {len(args.query)} characters")
             for i, chunk_line in enumerate(chunked_text, start=1):
                 print(f"{i}. {chunk_line}")
+
+
+        case "semantic_chunk":
+            chunked_sentences = ll.semantic_chunking(args.query, args.max_chunk_size, args.overlap)
+            print(f"Semantically chunking {len(args.query)} characters")
+            for i, chunk_line in enumerate(chunked_sentences, start=1):
+                print(f"{i}. {chunk_line}")
+
+        case "embed_chunks":
+            llminilm_semantic_load = ll.ChunkedSemanticSearch()
+
+            # Load movie data, and create embeddings
+            with open('data/movies.json', 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                documents = data["movies"]
+            chunk_embeddings = llminilm_semantic_load.load_or_create_chunk_embeddings(documents)
+            print(f"Generated {len(chunk_embeddings)} chunked embeddings")
 
         case _:
             parser.print_help()
