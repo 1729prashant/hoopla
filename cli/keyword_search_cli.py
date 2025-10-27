@@ -14,8 +14,10 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 BM25_K1 = 1.5
 BM25_B = 0.75
+CACHE_DIR = os.path.join(PROJECT_ROOT, "cache")
 
 # ===============================
 # TEXT NORMALIZATION PIPELINE
@@ -86,6 +88,10 @@ class InvertedIndex:
         # token -> set(doc_ids)
         self.index: dict[str, set[int]] = {}
         # doc_id -> movie dict
+        self.index_path = os.path.join(CACHE_DIR, "index.pkl")
+        self.docmap_path = os.path.join(CACHE_DIR, "docmap.pkl")
+        self.tf_path = os.path.join(CACHE_DIR, "term_frequencies.pkl")
+        self.doc_lengths_path = os.path.join(CACHE_DIR, "doc_lengths.pkl")
         self.docmap: dict[int, dict] = {}
         self.term_frequencies: dict[int, Counter[str]] = {}
         self.doc_lengths: dict = {}
