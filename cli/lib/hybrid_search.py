@@ -30,8 +30,12 @@ class HybridSearch:
         self.idx.load()
         return self.idx.bm25_search(query, limit)
 
-    def rrf_search(self, query, k, limit=10):
-        raise NotImplementedError("RRF hybrid search is not implemented yet.")
+    def rrf_search(self, query, k, limit=5):
+        docs_by_id = {d["id"]: d for d in self.documents}
+        bm25_search_result = adapt_bm25_results(self._bm25_search(query, limit*500), docs_by_id)
+        semantic_search_result = self.semantic_search.search_chunks(query, limit*500)
+        rrf_combined = rrf_combine_search_results(bm25_search_result, semantic_search_result, k)
+        return sorted(rrf_combined.values(), key=lambda x: x["rrf_score"], reverse=True)[:limit]
     
     def weighted_search(self, query,alpha, limit=5):
         #bm25_search_result = self._bm25_search(query, limit*500)
@@ -178,3 +182,106 @@ def adapt_bm25_results(bm25_results, documents_by_id):
             "score": score,
         })
     return adapted
+
+
+
+# Lower k values like 20: Gives more weight to top-ranked results, creating a steep drop-off in scores.
+# Higher k values like 100: Creates a more gradual decline, giving lower-ranked results more influence.
+def rrf_score(rank, k=60):
+    return 1 / (k + rank)
+
+
+def rrf_search_command(query: str, k: int, limit: int) -> dict:
+    movies = load_movies()
+    searcher = HybridSearch(movies)
+
+    original_query = query
+
+    results = searcher.rrf_search(query, k, limit)
+
+    for i, result in enumerate(results, start=1):
+        rank = i
+        title = result['title']
+        rrf_score = result['rrf_score']
+        bm25_rank = result['bm25_rank']
+        semantic_rank = result['semantic_rank']
+        
+        # Limit the document text (description) for display
+        document = result['document']
+        display_text = document[:100] + '...' if len(document) > 100 else document
+
+        # Print the required format
+        print(f"{rank}. {title}")
+        print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
+        print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
+        print(f"    {display_text}\n")
+
+
+
+def rank_and_sort_dictionaries(data: list[dict], sort_key: str, k: int) -> list[dict]:
+    """
+    Sorts a list of dictionaries by a specified key in descending order
+    and adds a 'rank' key, handling ties.
+    """
+    if not data:
+        return []
+
+    # 1. Sort the list by the specified key in descending order
+    # The sorted() function returns a new list, leaving the original unchanged.
+    sorted_data = sorted(data, key=lambda x: x.get(sort_key, 0), reverse=True)
+
+    # 2. Add ranks, handling ties
+    current_rank = 0
+    previous_score = None
+
+    for i, item in enumerate(sorted_data):
+        current_score = item.get(sort_key)
+
+        # Check for a tie: if the current score is the same as the previous score,
+        # assign the same rank. Otherwise, assign the rank based on the index + 1.
+        if current_score != previous_score:
+            current_rank = i + 1  # Rank starts at 1
+        
+        item['rank'] = current_rank
+        item['rrf_score'] = rrf_score(current_rank, k=k)
+        previous_score = current_score
+
+    return sorted_data
+
+
+def rrf_combine_search_results(bm25_results: list[dict], semantic_results: list[dict], k: int) -> dict:
+    
+    # RRF uses ranks, so we bypass score normalization and go straight to ranking
+    bm25_ranked = rank_and_sort_dictionaries(bm25_results, 'score', k)
+    semantic_ranked = rank_and_sort_dictionaries(semantic_results, 'score', k)
+
+    combined_scores = {}
+
+    def update_combined(result_list, rank_key):
+        for result in result_list:
+            # Semantic search results use 'movie_idx', BM25 uses 'id'
+            doc_id = result.get("id") or result.get("movie_idx") 
+            
+            if doc_id not in combined_scores:
+                # Initialize the document data
+                combined_scores[doc_id] = {
+                    "doc_id": doc_id,
+                    "title": result["title"],
+                    "document": result.get("document", result.get("description")), # Choose document or description
+                    "bm25_rank": 0,
+                    "semantic_rank": 0,
+                    "rrf_score": 0.0,
+                }
+            
+            # Update the specific rank
+            combined_scores[doc_id][rank_key] = result['rank']
+            # Sum the RRF score
+            combined_scores[doc_id]['rrf_score'] += result['rrf_score']
+
+    # Process BM25 Results
+    update_combined(bm25_ranked, 'bm25_rank')
+
+    # Process Semantic Results
+    update_combined(semantic_ranked, 'semantic_rank')
+    
+    return combined_scores

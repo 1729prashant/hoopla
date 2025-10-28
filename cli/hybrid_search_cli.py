@@ -21,6 +21,10 @@ def main() -> None:
     weighted_search_parser.add_argument("--alpha", type=float, default=0.5, help="weights between 0.0 (semantic) and 1.0 (keyword)")
     weighted_search_parser.add_argument("--limit", type=int, default=5, help="Number of results to return")
 
+    rrf_search_parser = subparsers.add_parser("rrf-search", help="reciprocal ranked search")
+    rrf_search_parser.add_argument("query", type=str, help="term to search for")
+    rrf_search_parser.add_argument("--k", type=float, default=0.5, help="default 60")
+    rrf_search_parser.add_argument("--limit", type=int, default=5, help="Number of results to return")
 
     args = parser.parse_args()
 
@@ -54,6 +58,9 @@ def main() -> None:
                     )
                 print(f"   {res['document'][:100]}...")
                 print()
+
+        case "rrf-search":
+            rrf_search_results = lh.rrf_search_command(args.query,args.k,args.limit)
 
         case _:
             parser.print_help()
