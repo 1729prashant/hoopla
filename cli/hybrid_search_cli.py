@@ -1,6 +1,7 @@
 import argparse
 import json
 import lib.hybrid_search as lh
+import lib.llm_search as llm_lib
 
 def load_movies():
     with open('data/movies.json', 'r', encoding='utf-8') as f:
@@ -25,6 +26,7 @@ def main() -> None:
     rrf_search_parser.add_argument("query", type=str, help="term to search for")
     rrf_search_parser.add_argument("--k", type=float, default=0.5, help="default 60")
     rrf_search_parser.add_argument("--limit", type=int, default=5, help="Number of results to return")
+    rrf_search_parser.add_argument("--enhance",type=str,choices=["spell","rewrite","expand"],help="Query enhancement method")
 
     args = parser.parse_args()
 
@@ -60,7 +62,11 @@ def main() -> None:
                 print()
 
         case "rrf-search":
-            rrf_search_results = lh.rrf_search_command(args.query,args.k,args.limit)
+            updated_query = args.query
+            if args.enhance != None:
+                updated_query = llm_lib.llm_query_correction(args.query, args.enhance)
+                print(f"Enhanced query ({args.enhance}): '{args.query}' -> '{updated_query}'\n")
+            rrf_search_results = lh.rrf_search_command(updated_query,args.k,args.limit)
 
         case _:
             parser.print_help()
@@ -68,3 +74,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
