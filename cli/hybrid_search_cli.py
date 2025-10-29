@@ -24,9 +24,11 @@ def main() -> None:
 
     rrf_search_parser = subparsers.add_parser("rrf-search", help="reciprocal ranked search")
     rrf_search_parser.add_argument("query", type=str, help="term to search for")
-    rrf_search_parser.add_argument("--k", type=float, default=0.5, help="default 60")
+    rrf_search_parser.add_argument("--k", type=float, default=60, help="default 60")
     rrf_search_parser.add_argument("--limit", type=int, default=5, help="Number of results to return")
     rrf_search_parser.add_argument("--enhance",type=str,choices=["spell","rewrite","expand"],help="Query enhancement method")
+    rrf_search_parser.add_argument("--rerank-method",type=str,choices=["individual"],help="Query reranking method")
+
 
     args = parser.parse_args()
 
@@ -62,11 +64,13 @@ def main() -> None:
                 print()
 
         case "rrf-search":
+            
             updated_query = args.query
             if args.enhance != None:
                 updated_query = llm_lib.llm_query_correction(args.query, args.enhance)
                 print(f"Enhanced query ({args.enhance}): '{args.query}' -> '{updated_query}'\n")
-            rrf_search_results = lh.rrf_search_command(updated_query,args.k,args.limit)
+
+            rrf_search_results = lh.rrf_search_command(updated_query,args.k,args.limit, args.rerank_method)
 
         case _:
             parser.print_help()

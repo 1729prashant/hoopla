@@ -74,3 +74,11 @@ Query: "{query}"
 
 
 
+def llm_rerank(query: str, usemodel: str = LLM_MODEL) -> str:
+    load_dotenv()
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
+
+    response = client.models.generate_content(model=usemodel, contents=query)
+
+    return response.text

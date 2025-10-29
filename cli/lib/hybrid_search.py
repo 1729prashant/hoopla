@@ -3,6 +3,8 @@ import json
 from keyword_search_cli import InvertedIndex
 from .semantic_search import ChunkedSemanticSearch
 from typing import Any
+from .llm_search import llm_rerank
+import time
 
 SCORE_PRECISION = 3
 
@@ -191,30 +193,70 @@ def rrf_score(rank, k=60):
     return 1 / (k + rank)
 
 
-def rrf_search_command(query: str, k: int, limit: int) -> dict:
+def rrf_search_command(query: str, k: int, limit: int, rerank_method: str = None) -> dict:
     movies = load_movies()
     searcher = HybridSearch(movies)
 
     original_query = query
 
-    results = searcher.rrf_search(query, k, limit)
 
-    for i, result in enumerate(results, start=1):
-        rank = i
-        title = result['title']
-        rrf_score = result['rrf_score']
-        bm25_rank = result['bm25_rank']
-        semantic_rank = result['semantic_rank']
-        
-        # Limit the document text (description) for display
-        document = result['document']
-        display_text = document[:100] + '...' if len(document) > 100 else document
+    if rerank_method == "individual":
+        results = searcher.rrf_search(query, k, limit*5)
+        print(f"Reranking top {limit} results using individual method...")
+        print(f"Reciprocal Rank Fusion Results for '{query}' (k={k})")
+        for i, result in enumerate(results[:limit], start=1):
+            rank = i
+            title = result['title']
+            rrf_score = result['rrf_score']
+            bm25_rank = result['bm25_rank']
+            semantic_rank = result['semantic_rank']
 
-        # Print the required format
-        print(f"{rank}. {title}")
-        print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
-        print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
-        print(f"    {display_text}\n")
+            # Limit the document text (description) for display
+            document = result['document']
+            display_text = document[:100] + '...' if len(document) > 100 else document
+
+            llm_query = f"""Rate how well this movie matches the search query.
+
+Query: "{query}"
+Movie: {title} - {document}
+
+Consider:
+- Direct relevance to query
+- User intent (what they're looking for)
+- Content appropriateness
+
+Rate 0-10 (10 = perfect match).
+Give me ONLY the number in your response, no other text or explanation.
+
+Score:"""
+            rerank_score = llm_rerank(llm_query)
+            time.sleep(10)
+
+            # Print the required format
+            print(f"{rank}. {title}")
+            print(f"    Rerank Score: {str(rerank_score).rstrip()}/10")
+            print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
+            print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
+            print(f"    {display_text}\n")
+
+    else:
+        results = searcher.rrf_search(query, k, limit)
+        for i, result in enumerate(results, start=1):
+            rank = i
+            title = result['title']
+            rrf_score = result['rrf_score']
+            bm25_rank = result['bm25_rank']
+            semantic_rank = result['semantic_rank']
+
+            # Limit the document text (description) for display
+            document = result['document']
+            display_text = document[:100] + '...' if len(document) > 100 else document
+
+            # Print the required format
+            print(f"{rank}. {title}")
+            print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
+            print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
+            print(f"    {display_text}\n")
 
 
 
