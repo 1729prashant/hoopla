@@ -7,6 +7,7 @@ from .llm_search import llm_rerank
 import time
 import re
 import ast 
+from sentence_transformers import CrossEncoder
 
 SCORE_PRECISION = 3
 
@@ -284,6 +285,45 @@ Return ONLY the IDs in order of relevance (best match first). Return a valid JSO
                 print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
                 print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
                 print(f"    {display_text}\n")
+        
+        case "cross_encoder":
+            results = searcher.rrf_search(query, k, limit)
+            cross_encoder = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L2-v2")
+
+            print(f"Reranking top {limit} results using cross_encoder method...")
+            print(f"Reciprocal Rank Fusion Results for '{query}' (k={k})")
+
+            pairs = []
+            for i, result in enumerate(results, start=0):
+                direct_list = [query, f"{result.get('title', '')} - {result.get('document', '')}"]
+                
+                pairs.append([query, f"{result.get('title', '')} - {result.get('document', '')}"])
+                cross_encoder_scores = cross_encoder.predict(direct_list)
+                
+                results[i]['cross_encoder_score'] = cross_encoder_scores
+
+            sorted_cross_encoder_results = sorted(results, key=lambda x: x["cross_encoder_score"], reverse=True)
+            
+            for i, result in enumerate(sorted_cross_encoder_results[:limit], start=1):
+                rank = i
+                title = result['title']
+                rrf_score = result['rrf_score']
+                bm25_rank = result['bm25_rank']
+                semantic_rank = result['semantic_rank']
+                cross_encoder_score_r = result['cross_encoder_score']
+
+                # Limit the document text (description) for display
+                document = result['document']
+                display_text = document[:100] + '...' if len(document) > 100 else document
+
+                # Print the required format
+                print(f"{rank}. {title}")
+                print(f".   Cross Encoder Score: {cross_encoder_score_r:.3f}")
+                print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
+                print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
+                print(f"    {display_text}\n")
+
+
 
         case _:
             results = searcher.rrf_search(query, k, limit)
