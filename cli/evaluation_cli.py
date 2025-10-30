@@ -21,25 +21,37 @@ def evaluation_command(limit: int, k = 60) -> None:
     print(f"k={limit}")
     for i, data in enumerate(golden_dataset,start=0):
         query = data['query']
-        relevant_retrieved = set(data['relevant_docs'])
+        relevant_retrieved = data['relevant_docs']
+        relevant_retrieved_set = set(relevant_retrieved)
 
         results = searcher.rrf_search(query, k, limit)
-        total_retrieved = set([result["title"] for result in results])
+        total_retrieved = [result["title"].strip() for result in results]
+        total_retrieved_set = set(total_retrieved)
 
-        true_positives = len(total_retrieved.intersection(relevant_retrieved))
+        # true_positives = len(total_retrieved.intersection(relevant_retrieved))
 
-        precision = true_positives / len(total_retrieved)
+        precision = len(relevant_retrieved_set & total_retrieved_set) / len(total_retrieved)
+        recall = len(relevant_retrieved_set & total_retrieved_set) / len(relevant_retrieved)
+        
+        if precision + recall == 0.0:
+            f1_score = 0.0
+        else:    
+            f1_score = 2 * (precision * recall) / (precision + recall)
 
         precision_list.append({"query":     query, 
-                               "precision": precision, 
+                               "precision": precision,
+                               "recall": recall, 
+                               "f1_score": f1_score,
                                "retrieved": ", ".join(total_retrieved), 
                                "relevant":  ", ".join(relevant_retrieved)})
 
     # precision_list = sorted(precision_list, key=lambda x: x["precision"], reverse=True)
-
+    
     for q in precision_list:
         print(f"\n- Query: {q['query']}")
         print(f"   - Precision@{limit}: {q['precision']:.4f}")
+        print(f"   - Recall@{limit}: {q['recall']:.4f}")
+        print(f"   - F1 Score: {q['f1_score']:.4f}")
         print(f"   - Retrieved: {q['retrieved']}")
         print(f"   - Relevant: {q['relevant']}")
 
@@ -56,7 +68,7 @@ def main():
     limit = args.limit
 
     # run evaluation logic here
-    evaluation_command(limit)
+    evaluation_command(limit, k = 60 if limit < 5 else limit)
 
 
 
