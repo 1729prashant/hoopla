@@ -196,7 +196,7 @@ def rrf_score(rank, k=60):
     return 1 / (k + rank)
 
 
-def rrf_search_command(query: str, k: int, limit: int, rerank_method: str = None) -> dict:
+def rrf_search_command(query: str, k: int, limit: int, rerank_method: str = None, evaluate: bool = False) -> dict:
     movies = load_movies()
     searcher = HybridSearch(movies)
 
@@ -344,7 +344,34 @@ Return ONLY the IDs in order of relevance (best match first). Return a valid JSO
                 print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
                 print(f"    {display_text}\n")
 
+    if evaluate:
+        llm_query = f"""Rate how relevant each result is to this query on a 0-3 scale:
+Query: "{query}"
 
+Results:
+{results}
+
+Scale:
+- 3: Highly relevant
+- 2: Relevant
+- 1: Marginally relevant
+- 0: Not relevant
+
+Do NOT give any numbers out than 0, 1, 2, or 3.
+
+Return ONLY the scores in the same order you were given the documents. Return a valid JSON list, nothing else. For example:
+
+[2, 0, 3, 2, 0, 1]"""
+        
+        llm_evaluated_score = llm_rerank(llm_query)
+        match = re.search(r"\[(.*?)\]", llm_evaluated_score)
+        llm_eval_score_list = []
+        if match: 
+            list_str = "[" + match.group(1) + "]"
+            llm_eval_score_list = ast.literal_eval(list_str)
+        
+        for i, result in enumerate(results, start=1):
+            print(f"{i}. {result['title']}: {llm_eval_score_list[i-1]}/3")
 
 def rank_and_sort_dictionaries(data: list[dict], sort_key: str, k: int) -> list[dict]:
     """
@@ -413,3 +440,4 @@ def rrf_combine_search_results(bm25_results: list[dict], semantic_results: list[
     update_combined(semantic_ranked, 'semantic_rank')
     
     return combined_scores
+
