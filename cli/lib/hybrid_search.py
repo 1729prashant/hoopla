@@ -5,6 +5,8 @@ from .semantic_search import ChunkedSemanticSearch
 from typing import Any
 from .llm_search import llm_rerank
 import time
+import re
+import ast 
 
 SCORE_PRECISION = 3
 
@@ -200,63 +202,107 @@ def rrf_search_command(query: str, k: int, limit: int, rerank_method: str = None
     original_query = query
 
 
-    if rerank_method == "individual":
-        results = searcher.rrf_search(query, k, limit*5)
-        print(f"Reranking top {limit} results using individual method...")
-        print(f"Reciprocal Rank Fusion Results for '{query}' (k={k})")
-        for i, result in enumerate(results[:limit], start=1):
-            rank = i
-            title = result['title']
-            rrf_score = result['rrf_score']
-            bm25_rank = result['bm25_rank']
-            semantic_rank = result['semantic_rank']
+    match rerank_method:
+        case "individual":
+            results = searcher.rrf_search(query, k, limit*5)
+            print(f"Reranking top {limit} results using individual method...")
+            print(f"Reciprocal Rank Fusion Results for '{query}' (k={k})")
+            for i, result in enumerate(results[:limit], start=1):
+                rank = i
+                title = result['title']
+                rrf_score = result['rrf_score']
+                bm25_rank = result['bm25_rank']
+                semantic_rank = result['semantic_rank']
 
-            # Limit the document text (description) for display
-            document = result['document']
-            display_text = document[:100] + '...' if len(document) > 100 else document
+                # Limit the document text (description) for display
+                document = result['document']
+                display_text = document[:100] + '...' if len(document) > 100 else document
 
-            llm_query = f"""Rate how well this movie matches the search query.
+                llm_query = f"""Rate how well this movie matches the search query.
+
+    Query: "{query}"
+    Movie: {title} - {document}
+
+    Consider:
+    - Direct relevance to query
+    - User intent (what they're looking for)
+    - Content appropriateness
+
+    Rate 0-10 (10 = perfect match).
+    Give me ONLY the number in your response, no other text or explanation.
+
+    Score:"""
+                rerank_score = llm_rerank(llm_query)
+                time.sleep(10)
+
+                # Print the required format
+                print(f"{rank}. {title}")
+                print(f"    Rerank Score: {str(rerank_score).rstrip()}/10")
+                print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
+                print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
+                print(f"    {display_text}\n")
+        
+        case "batch":
+            results = searcher.rrf_search(query, k, limit*5)
+            print(f"Reranking top {limit} results using batch method...")
+            print(f"Reciprocal Rank Fusion Results for '{query}' (k={k})")
+
+            llm_query = f"""Rank these movies by relevance to the search query.
 
 Query: "{query}"
-Movie: {title} - {document}
 
-Consider:
-- Direct relevance to query
-- User intent (what they're looking for)
-- Content appropriateness
+Movies:
+{results}
 
-Rate 0-10 (10 = perfect match).
-Give me ONLY the number in your response, no other text or explanation.
+Return ONLY the IDs in order of relevance (best match first). Return a valid JSON list, nothing else. For example:
 
-Score:"""
-            rerank_score = llm_rerank(llm_query)
-            time.sleep(10)
+[75, 12, 34, 2, 1]
+"""
+            rerank_score_list = llm_rerank(llm_query)
 
-            # Print the required format
-            print(f"{rank}. {title}")
-            print(f"    Rerank Score: {str(rerank_score).rstrip()}/10")
-            print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
-            print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
-            print(f"    {display_text}\n")
+            match = re.search(r"\[(.*?)\]", rerank_score_list)
+            llm_reranked = []
+            if match: 
+                list_str = "[" + match.group(1) + "]"
+                llm_reranked = ast.literal_eval(list_str)
+            
+            for i, doc_id in enumerate(llm_reranked[:limit], start=1):
+                doc = next((d for d in results if d["doc_id"] == doc_id), None)
+                rank = i
+                title = doc['title']
+                rrf_score = doc['rrf_score']
+                bm25_rank = doc['bm25_rank']
+                semantic_rank = doc['semantic_rank']
 
-    else:
-        results = searcher.rrf_search(query, k, limit)
-        for i, result in enumerate(results, start=1):
-            rank = i
-            title = result['title']
-            rrf_score = result['rrf_score']
-            bm25_rank = result['bm25_rank']
-            semantic_rank = result['semantic_rank']
+                # Limit the document text (description) for display
+                document = doc['document']
+                display_text = document[:100] + '...' if len(document) > 100 else document
 
-            # Limit the document text (description) for display
-            document = result['document']
-            display_text = document[:100] + '...' if len(document) > 100 else document
+                # Print the required format
+                print(f"{rank}. {title}")
+                print(f"    Rerank Score: {i}")
+                print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
+                print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
+                print(f"    {display_text}\n")
 
-            # Print the required format
-            print(f"{rank}. {title}")
-            print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
-            print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
-            print(f"    {display_text}\n")
+        case _:
+            results = searcher.rrf_search(query, k, limit)
+            for i, result in enumerate(results, start=1):
+                rank = i
+                title = result['title']
+                rrf_score = result['rrf_score']
+                bm25_rank = result['bm25_rank']
+                semantic_rank = result['semantic_rank']
+
+                # Limit the document text (description) for display
+                document = result['document']
+                display_text = document[:100] + '...' if len(document) > 100 else document
+
+                # Print the required format
+                print(f"{rank}. {title}")
+                print(f"    RRF Score: {rrf_score:.3f}") # Use 3 decimal places for score
+                print(f"    BM25 Rank: {bm25_rank}, Semantic Rank: {semantic_rank}")
+                print(f"    {display_text}\n")
 
 
 
