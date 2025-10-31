@@ -94,6 +94,7 @@ Instructions:
 
 Answer:"""
 
+
 def rag_citations_command(query: str, limit: int, k = 60) -> None:
     movies = load_movies()
     searcher = HybridSearch(movies)
@@ -107,6 +108,41 @@ def rag_citations_command(query: str, limit: int, k = 60) -> None:
     response = client.models.generate_content(
         model='gemini-2.0-flash', 
         contents=gemini_citations_prompt(query, results)
+    )
+    print(response.text)
+
+
+def gemini_question_prompt(query: str, results) -> str:
+    return f"""Answer the user's question based on the provided movies that are available on Hoopla.
+
+This should be tailored to Hoopla users. Hoopla is a movie streaming service.
+
+Question: {query}
+
+Documents:
+{results}
+
+Instructions:
+- Answer questions directly and concisely
+- Be casual and conversational
+- Don't be cringe or hype-y
+- Talk like a normal person would in a chat conversation
+
+Answer:"""
+
+def rag_question_command(query: str, limit: int, k = 60) -> None:
+    movies = load_movies()
+    searcher = HybridSearch(movies)
+    results = searcher.rrf_search(query, k, limit)
+
+    print(f"Search Results:")
+    for i, result in enumerate(results, start=1):
+        print(f"  - {result['title']}")
+
+    print(f"\nAnswer:")
+    response = client.models.generate_content(
+        model='gemini-2.0-flash', 
+        contents=gemini_question_prompt(query, results)
     )
     print(response.text)
 
@@ -126,6 +162,9 @@ def main():
     rag_citations_parser.add_argument("query", type=str, help="Search query for RAG")
     rag_citations_parser.add_argument("--limit", type=int, default=5, help="Number of results to return")
 
+    rag_question_parser = subparsers.add_parser("question", help="Perform Citations RAG (search + generate answer)")
+    rag_question_parser.add_argument("query", type=str, help="Search query for RAG")
+    rag_question_parser.add_argument("--limit", type=int, default=5, help="Number of results to return")
 
     args = parser.parse_args()
 
@@ -139,7 +178,10 @@ def main():
 
         case "citations":
             rag_citations_command(args.query, args.limit)
-            
+
+        case "question":
+            rag_question_command(args.query, args.limit)
+
         case _:
             parser.print_help()
 
