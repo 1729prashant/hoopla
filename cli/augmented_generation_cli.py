@@ -45,15 +45,45 @@ def rag_command(query: str, limit: int, k = 60) -> None:
     print(response.text)
 
 
+def gemini_summarize_prompt(query: str, results) -> str:
+    return f"""
+Provide information useful to this query by synthesizing information from multiple search results in detail.
+The goal is to provide comprehensive information so that users know what their options are.
+Your response should be information-dense and concise, with several key pieces of information about the genre, plot, etc. of each movie.
+This should be tailored to Hoopla users. Hoopla is a movie streaming service.
+Query: {query}
+Search Results:
+{results}
+Provide a comprehensive 3–4 sentence answer that combines information from multiple sources:
+"""
+
+def rag_summarize_command(query: str, limit: int, k = 60) -> None:
+    movies = load_movies()
+    searcher = HybridSearch(movies)
+    results = searcher.rrf_search(query, k, limit)
+
+    print(f"Search Results:")
+    for i, result in enumerate(results, start=1):
+        print(f"  - {result['title']}")
+
+    print(f"\nRAG Response:")
+    response = client.models.generate_content(
+        model='gemini-2.0-flash', 
+        contents=gemini_summarize_prompt(query, results)
+    )
+    print(response.text)
 
 def main():
     parser = argparse.ArgumentParser(description="Retrieval Augmented Generation CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    rag_parser = subparsers.add_parser(
-        "rag", help="Perform RAG (search + generate answer)"
-    )
+    rag_parser = subparsers.add_parser("rag", help="Perform RAG (search + generate answer)")
     rag_parser.add_argument("query", type=str, help="Search query for RAG")
+
+    rag_summarize_parser = subparsers.add_parser("summarize", help="Perform Summary RAG (search + generate answer)")
+    rag_summarize_parser.add_argument("query", type=str, help="Search query for RAG")
+    rag_summarize_parser.add_argument("--limit", type=int, default=5, help="Number of results to return")
+
 
     args = parser.parse_args()
 
@@ -61,6 +91,9 @@ def main():
         case "rag":
             query = args.query
             rag_command(args.query,5)
+        
+        case "summarize":
+            rag_summarize_command(args.query, args.limit)
 
         case _:
             parser.print_help()
