@@ -1,0 +1,14 @@
+[project]
+name = "rag-search-engine"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "dotenv>=0.9.9",
+  "google-genai>=1.39.1",
+  "nltk==3.9.1",
+  "numpy>=2.3.3",
+  "pillow>=11.3.0",
+  "sentence-transformers==5.1.0",
+]
